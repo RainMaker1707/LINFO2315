@@ -1,0 +1,9 @@
+
+mdk
+build
+esp32s3_ffi/sdkconfig*
+esp32s3_ffi/Cargo.lock
+esp32s3_ffi/ffi.h
+esp32s3_ffi/target
+
+esp32s3_ffi/ffi/target/
