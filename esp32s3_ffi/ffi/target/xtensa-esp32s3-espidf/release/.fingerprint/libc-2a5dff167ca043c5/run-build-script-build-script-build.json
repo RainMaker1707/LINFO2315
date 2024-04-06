@@ -1,1 +1,0 @@
-{"rustc":8020507062040935436,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[3376675529440704950,"build_script_build",false,17092003875744436764]],"local":[{"RerunIfChanged":{"output":"xtensa-esp32s3-espidf/release/build/libc-2a5dff167ca043c5/output","paths":["build.rs"]}}],"rustflags":[],"metadata":0,"config":0,"compile_kind":0}
