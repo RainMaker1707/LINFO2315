@@ -1,0 +1,16 @@
+[target.xtensa-esp32s3-espidf]
+runner = "espflash flash --monitor"
+
+
+[build]
+rustflags = [
+  "-C", "link-arg=-Tlinkall.x",
+
+  "-C", "link-arg=-nostartfiles",
+]
+
+target = "xtensa-esp32s3-espidf"
+
+[unstable]
+build-std = ["core", "panic_abort"]
+build-std-features = ["panic_immediate_abort"]

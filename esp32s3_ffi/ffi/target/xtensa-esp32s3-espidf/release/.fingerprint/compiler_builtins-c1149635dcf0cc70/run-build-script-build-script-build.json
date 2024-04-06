@@ -1,0 +1,1 @@
+{"rustc":8020507062040935436,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[2482831451342126696,"build_script_build",false,8496961782548025133]],"local":[{"RerunIfChanged":{"output":"xtensa-esp32s3-espidf/release/build/compiler_builtins-c1149635dcf0cc70/output","paths":["build.rs"]}}],"rustflags":[],"metadata":0,"config":0,"compile_kind":0}
