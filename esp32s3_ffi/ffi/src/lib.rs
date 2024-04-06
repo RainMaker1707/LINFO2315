@@ -21,7 +21,8 @@ use esp32s3_hal::{
         Gpio35,  // ONBOARD LED
     },
     systimer::SystemTimer,
-    i2c::I2C
+    i2c::I2C,
+    sha::Sha
 };
 //use esp_println::println; // ONLY FOR DEBUG COMMENT IT WHEN NOT USED
 
@@ -59,6 +60,8 @@ static BMP_COEFF: Mutex<RefCell<Option<Coeffs>>> = Mutex::new(RefCell::new(None)
 static RED: Mutex<RefCell<Option<Gpio21<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
 static YELLOW: Mutex<RefCell<Option<Gpio26<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
 static GREEN: Mutex<RefCell<Option<Gpio48<Output<PushPull>>>>> = Mutex::new(RefCell::new(None));
+
+static SHA: Mutex<RefCell<Option<Sha>>> = Mutex::new(RefCell::new(None));
 
 
 fn write_read_address(address: u8) -> i16{
@@ -121,6 +124,8 @@ fn setup() {
     let yellow = io.pins.gpio26.into_push_pull_output();
     let green = io.pins.gpio48.into_push_pull_output();
 
+    let sha = Sha::new(peripherals.SHA, esp32s3_hal::sha::ShaMode::SHA256);
+
     critical_section::with(|cs| {
         LED.borrow_ref_mut(cs).replace(led);
         DELAY.borrow_ref_mut(cs).replace(delay);
@@ -134,6 +139,8 @@ fn setup() {
         RED.borrow_ref_mut(cs).replace(red);
         YELLOW.borrow_ref_mut(cs).replace(yellow);
         GREEN.borrow_ref_mut(cs).replace(green);
+
+        SHA.borrow_ref_mut(cs).replace(sha);
     })
 }
 
@@ -184,7 +191,6 @@ fn compute_temp(ut: i16, coeff: &mut Coeffs) -> f64 {
     let ac6 = coeff.ac6;
     let mc = coeff.mc;
     let md = coeff.md;
-    let base: i32 = 2;
     let x1 = ((ut as i32 - ac6 as i32) * ac5 as i32) >> 15;
     let x2 = ((mc as i32) << 11) / (x1 + md as i32);
     return ((x1 + x2 + 8i32) >> 4) as f64 / 10.0; // / 10 because T is in 0.1 °C
@@ -206,42 +212,28 @@ fn bmp180() -> f64 {
 }
 
 
-// fn leds(scaler: u8) {
-//     if scaler > 7 {
-//         return ();
-//     }
+fn leds(scaler: u8) {
+    let is_red: bool = (scaler & 0b001) != 0;
+    let is_yellow: bool = (scaler & 0b010) != 0;
+    let is_green: bool = (scaler & 0b100) != 0;
 
-//     let is_red: bool = (scaler & 0b001) != 0;
-//     let is_yellow: bool = (scaler & 0b010) != 0;
-//     let is_green: bool = (scaler & 0b100) != 0;
-
-//     unsafe {
-//         if let Some(ref mut red_led) = RED {
-//             if is_red {
-//                 red_led.set_high().unwrap();
-//             } else {
-//                 red_led.set_low().unwrap();
-//             }
-//         }
-        
-//         if let Some(ref mut yellow_led) = YELLOW {
-//             if is_yellow {
-//                 yellow_led.set_high().unwrap();
-//             } else {
-//                 yellow_led.set_low().unwrap();
-//             }
-//         }
-
-//         if let Some(ref mut green_led) = GREEN {
-//             if is_green {
-//                 green_led.set_high().unwrap();
-
-//             } else {
-//                 green_led.set_low().unwrap();
-//             }
-//         }
-//     }
-// }
+    critical_section::with(|cs| {
+        let mut red_ = RED.borrow_ref_mut(cs);
+        let mut yellow_ = YELLOW.borrow_ref_mut(cs);
+        let mut green_ = GREEN.borrow_ref_mut(cs);
+        match (red_.as_mut(), yellow_.as_mut(), green_.as_mut()) {
+            (Some(red), Some(yellow), Some(green)) => {
+                if is_red { let _  = red.set_high(); }
+                else { let _ = red.set_low(); };
+                if is_yellow { let _ = yellow.set_high(); }
+                else { let _ = yellow.set_low(); };
+                if is_green { let _ = green.set_high(); }
+                else { let _ = green.set_low(); };
+            }
+            (_, _ , _) => {}
+        }
+    });
+}
 
 
 fn sr04() -> f64 {
@@ -253,12 +245,12 @@ fn sr04() -> f64 {
         match(echo_.as_mut(), trigger_.as_mut(), delay_.as_mut()){
             (Some(echo), Some(trigger), Some(delay)) => {
                 let _ = trigger.set_high();
-                delay.delay_ms(10u32);
+                delay.delay_us(10u32);
                 let _ = trigger.set_low();
-                let start: f64 = SystemTimer::now() as f64;
                 while echo.is_low().expect("Error reading echo high") {}
+                let start: f64 = SystemTimer::now() as f64;
+                while echo.is_high().expect("Error reading echo low") {}
                 let stop: f64 = SystemTimer::now() as f64;
-                //while echo.is_high().expect("Error reading echo low") {}
                 distance = 340.0 * (stop-start) / (1000000.0 * 2.0 * 10.0); // 10 tick per us so /10
             }
             (_, _, _) => {}
@@ -268,11 +260,24 @@ fn sr04() -> f64 {
 }
 
 
-// fn sha256(data: f64)-> Array{
-//     return Array {
-//         _0: [0; 32],
-//     };
-// }
+fn sha256(data: f64) -> Array{
+    let mut final_sha = [0u8; 32];
+    
+    critical_section::with(|cs| {
+        let mut sha_ = SHA.borrow_ref_mut(cs);
+        match sha_.as_mut() {
+            Some(sha256) => {
+                let data_bytes = data.to_ne_bytes();
+                let _ = nb::block!(sha256.update(&data_bytes));
+                let _ = nb::block!(sha256.finish(final_sha.as_mut_slice()));
+            }
+            None => {}
+        }
+    });
+    return Array {
+        _0: final_sha
+    };
+}
 
 
 
@@ -294,7 +299,7 @@ fn sr04() -> f64 {
 // FFI
 
 #[repr(C)]
-struct Array {
+pub struct Array {
     _0: [u8; 32],
 }
 
@@ -318,13 +323,12 @@ pub extern "C" fn ffi_blink() {
     blink();
 }
 
-// // TODO: HERE SHA
-// #[no_mangle]
-// pub extern "C" fn ffi_sha256(data: f64) -> Array{
-//     return sha256(data);
-// }
+#[no_mangle]
+pub extern "C" fn ffi_sha256(data: f64) -> Array{
+    return sha256(data);
+}
 
-// #[no_mangle]
-// pub extern "C" fn ffi_leds(scaler: u8) {
-//     leds(scaler)
-// }
+#[no_mangle]
+pub extern "C" fn ffi_leds(scaler: u8) {
+    leds(scaler)
+}

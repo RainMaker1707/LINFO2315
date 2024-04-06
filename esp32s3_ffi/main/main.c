@@ -47,17 +47,27 @@ void app_main(void) {
 
     ffi_setup();
     
-    //int scaler = 0;
+    int scaler = 0;
     while(true){
         ffi_blink();
-        // ffi_leds(scaler++);
-        // if (scaler > 7) {
-        //     scaler = 0;
-        // }
+        ffi_leds(scaler++);
+        if (scaler > 7) {
+            scaler = 0;
+        }
         double dist = ffi_sr04();
         printf("SR04: %.2fm\n", dist);
         double temp = ffi_bmp180();
         printf("Temperature %.1f°C\n", temp);
+
+        //double data = (double)(*(unsigned long long*)&dist ^ *(unsigned long long *)&temp);
+
+        Array sha = ffi_sha256(1.0);
+        printf("SHA: [");
+        for(int i = 0; i<32; i++) {
+            if (i<31) { printf("%d, ", sha._0[i]); }
+            else { printf("%d", sha._0[31]); }
+        }
+        printf("]\n\n");
         sleep(1);
     }
 }

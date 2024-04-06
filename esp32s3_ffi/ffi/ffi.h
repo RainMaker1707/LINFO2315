@@ -8,6 +8,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+typedef struct Array {
+  uint8_t _0[32];
+} Array;
+
 void ffi_setup(void);
 
 double ffi_bmp180(void);
@@ -15,5 +19,9 @@ double ffi_bmp180(void);
 double ffi_sr04(void);
 
 void ffi_blink(void);
+
+struct Array ffi_sha256(double data);
+
+void ffi_leds(uint8_t scaler);
 
 #endif
