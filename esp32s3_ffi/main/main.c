@@ -180,11 +180,11 @@ int app_main(void) {
     }
 
 
-    
-    xTaskCreatePinnedToCore(blink, "blink", STACK_SIZE, NULL, 1, NULL, 1);
-    xTaskCreatePinnedToCore(sha256_task, "sha256_task", STACK_SIZE, NULL, 2, NULL, 1);
-    xTaskCreatePinnedToCore(poll_sr04, "poll_sr04", STACK_SIZE, NULL, 3, NULL, 1);
-    xTaskCreatePinnedToCore(button, "button", STACK_SIZE, NULL, 4, NULL, 1);
-    xTaskCreatePinnedToCore(poll_bmp180, "poll_bmp180", STACK_SIZE, NULL, 5, NULL, 1);
+    // docs.espressif.com/projects/esp-idf/en/v4.3/esp32/api-reference/system/freertos.html#task-api
+    xTaskCreatePinnedToCore(blink, "blink", STACK_SIZE, NULL, 1|portPRIVILEGE_BIT, NULL, 0);
+    xTaskCreatePinnedToCore(sha256_task, "sha256_task", STACK_SIZE, NULL, 2|portPRIVILEGE_BIT, NULL, 0);
+    xTaskCreatePinnedToCore(poll_sr04, "poll_sr04", STACK_SIZE, NULL, 3|portPRIVILEGE_BIT, NULL, 0);
+    xTaskCreatePinnedToCore(button, "button", STACK_SIZE, NULL, 4|portPRIVILEGE_BIT, NULL, 0);
+    xTaskCreatePinnedToCore(poll_bmp180, "poll_bmp180", STACK_SIZE, NULL, 5|portPRIVILEGE_BIT, NULL, 0);
     return 0;
 }
