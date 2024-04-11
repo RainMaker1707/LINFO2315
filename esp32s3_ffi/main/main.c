@@ -25,7 +25,7 @@ SemaphoreHandle_t s_scaler;
 QueueHandle_t temp_queue;
 QueueHandle_t dist_queue;
 
-uint8_t scaler = 0;
+uint8_t scaler = 1;
 double temp = 0;
 double dist = 0;
 
@@ -51,7 +51,7 @@ void poll_bmp180(){
         // 5. Unlock the poll_sr04 task.
         xSemaphoreGive(s_sr04);
         // 6. Wait for the period defined by the scaling factor
-        const TickType_t task_delay = DELAY / ((scale+1) * portTICK_PERIOD_MS);
+        const TickType_t task_delay = DELAY / (scale * portTICK_PERIOD_MS);
         vTaskDelay(task_delay);
     }
 }
@@ -98,13 +98,13 @@ void blink(){
 }
 
 void button(){
-    ffi_leds(scaler);
     while(true){
         // This task, unlocked by the button interrupt,  
         xSemaphoreTake(s_button, portMAX_DELAY);
         // Increments the scaler by one, wrapping it around in case of overload.
         xSemaphoreTake(s_scaler, portMAX_DELAY);
-        scaler = (scaler + 1) % 8;
+        scaler = scaler % 7;
+        scaler += 1;
         xSemaphoreGive(s_scaler);
         // It then displays the binary scaler value on the three-LED stand.
         ffi_leds(scaler_read());
@@ -131,7 +131,7 @@ int app_main(void) {
     gpio_config_t io_conf;
     io_conf.intr_type = GPIO_INTR_POSEDGE;
     io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = (1ULL << GPIO_NUM_0);
+    io_conf.pin_bit_mask = 1ULL << GPIO_NUM_0;
     gpio_config(&io_conf);
     gpio_install_isr_service(false);
     gpio_isr_handler_add(GPIO_NUM_0, &button_isr, NULL);
@@ -139,7 +139,7 @@ int app_main(void) {
     s_scaler = xSemaphoreCreateBinary();
     if (s_scaler == NULL)
     {
-        printf("ERROR: could not create s_scaler\n");
+        printf("ERROR: s_scaler\n");
         return 1;
     }
     xSemaphoreGive(s_scaler);
@@ -147,38 +147,39 @@ int app_main(void) {
     s_sr04 = xSemaphoreCreateBinary();
     if (s_sr04 == NULL)
     {
-        printf("ERROR: could not create s_sr04\n");
+        printf("ERROR: s_sr04\n");
         return 1;
     }
 
     s_blink = xSemaphoreCreateBinary();
     if (s_blink == NULL)
     {
-        printf("ERROR: could not create s_blink\n");
+        printf("ERROR: s_blink\n");
         return 1;
     }
 
     s_button = xSemaphoreCreateBinary();
     if (s_button == NULL)
     {
-        printf("ERROR: could not create s_button\n");
+        printf("ERROR: s_button\n");
         return 1;
     }
 
     temp_queue = xQueueCreate(1, sizeof(double));
     if (temp_queue == NULL)
     {
-        printf("ERROR: could not create temp_queue\n");
+        printf("ERROR: temp_queue\n");
         return 1;
     }
 
     dist_queue = xQueueCreate(1, sizeof(double));
     if (dist_queue == NULL)
     {
-        printf("ERROR: could not create dist_queue\n");
+        printf("ERROR: dist_queue\n");
         return 1;
     }
 
+    ffi_leds(scaler_read());
 
     // docs.espressif.com/projects/esp-idf/en/v4.3/esp32/api-reference/system/freertos.html#task-api
     xTaskCreatePinnedToCore(blink, "blink", STACK_SIZE, NULL, 1|portPRIVILEGE_BIT, NULL, 0);
