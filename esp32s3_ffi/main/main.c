@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <math.h>
 
 
 #include "freertos/FreeRTOS.h"
@@ -51,7 +52,7 @@ void heartbeat(){
 }
 
 void poll_bmp180(){
-    printf("name,waitingTime,runningTime,scalerValue");
+    // printf("name,waitingTime,runningTime,scalerValue");
     while(true) {
         long long int start = esp_timer_get_time();
 
@@ -62,7 +63,7 @@ void poll_bmp180(){
         // 3. Send the temperature value to the sha256_task task.
         xQueueSend(temp_queue, &temp, portMAX_DELAY);
         // 4. Read the frequency scaling factor.
-        const TickType_t task_delay = DELAY / (scaler_read() * portTICK_PERIOD_MS);
+        const TickType_t task_delay = DELAY / (pow(2, scaler_read()-1) * portTICK_PERIOD_MS);  
         // 5. Unlock the poll_sr04 task.
         xSemaphoreGive(s_sr04);
         long long int start_waiting = esp_timer_get_time();
@@ -70,7 +71,7 @@ void poll_bmp180(){
         vTaskDelay(task_delay);
 
         long long int stop = esp_timer_get_time();        
-        printf("%s,%lld,%lld,%d\n", "BMP180", stop-start_waiting, start_waiting-start, scaler);        
+        // printf("%s,%lld,%lld,%d\n", "BMP180", stop-start_waiting, start_waiting-start, scaler);        
     }
 }
 
@@ -85,7 +86,7 @@ void poll_sr04(){
         // 2. Send value to sha256 task
         xQueueSend(dist_queue, &dist, portMAX_DELAY);
         long long int stop = esp_timer_get_time();
-        printf("%s,%lld,%lld,%d\n", "SR04", start-start_waiting, stop-start, scaler);
+        // printf("%s,%lld,%lld,%d\n", "SR04", start-start_waiting, stop-start, scaler);
     }
 }
 
@@ -104,14 +105,16 @@ void sha256_task(){
         Array sha = ffi_sha256(xor);
         long long int stop = esp_timer_get_time();
         // random value is printed on the UART, along with the temperature and distance values
-        // printf("SHA: [");
-        // for(int i = 0; i<32; i++) {
-        //     if (i<31) { printf("%d, ", sha._0[i]); }
-        //     else { printf("%d", sha._0[31]); }
-        // }
-        // printf("]\n");
-        // printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
-        printf("%s,%lld,%lld,%d\n", "SHA256", start-start_waiting, stop-start, scaler);
+        printf("SHA: [");
+        for(int i = 0; i<32; i++) {
+            if (i<31) { printf("%d, ", sha._0[i]); }
+            else { printf("%d", sha._0[31]); }
+        }
+        printf("]\n");
+        printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
+        temp = 0;
+        dist = 0;
+        // printf("%s,%lld,%lld,%d\n", "SHA256", start-start_waiting, stop-start, scaler);
     }
 }
 
@@ -150,7 +153,7 @@ void IRAM_ATTR button_isr(void *arg) {
 
 int app_main(void) {
 
-    printf("Hello from ESP-IDF.\n");    
+    // printf("Hello from ESP-IDF.\n");    
     ffi_setup();
 
     // ESP-IDF to setup the button interrupt rather than the bare-metal HAL    
@@ -165,7 +168,7 @@ int app_main(void) {
     s_scaler = xSemaphoreCreateBinary();
     if (s_scaler == NULL)
     {
-        printf("ERROR: s_scaler\n");
+        // printf("ERROR: s_scaler\n");
         return 1;
     }
     xSemaphoreGive(s_scaler);
@@ -173,35 +176,35 @@ int app_main(void) {
     s_sr04 = xSemaphoreCreateBinary();
     if (s_sr04 == NULL)
     {
-        printf("ERROR: s_sr04\n");
+        // printf("ERROR: s_sr04\n");
         return 1;
     }
 
     s_blink = xSemaphoreCreateBinary();
     if (s_blink == NULL)
     {
-        printf("ERROR: s_blink\n");
+        // printf("ERROR: s_blink\n");
         return 1;
     }
 
     s_button = xSemaphoreCreateBinary();
     if (s_button == NULL)
     {
-        printf("ERROR: s_button\n");
+        // printf("ERROR: s_button\n");
         return 1;
     }
 
     temp_queue = xQueueCreate(1, sizeof(double));
     if (temp_queue == NULL)
     {
-        printf("ERROR: temp_queue\n");
+        // printf("ERROR: temp_queue\n");
         return 1;
     }
 
     dist_queue = xQueueCreate(1, sizeof(double));
     if (dist_queue == NULL)
     {
-        printf("ERROR: dist_queue\n");
+        // printf("ERROR: dist_queue\n");
         return 1;
     }
 
