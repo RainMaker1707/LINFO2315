@@ -51,6 +51,7 @@ void heartbeat(){
 }
 
 void poll_bmp180(){
+    printf("name,waitingTime,runningTime,scalerValue");
     while(true) {
         long long int start = esp_timer_get_time();
 
@@ -69,7 +70,7 @@ void poll_bmp180(){
         vTaskDelay(task_delay);
 
         long long int stop = esp_timer_get_time();        
-        printf("%s, waiting %lld µs, run %lld µs, scaler=%d\n\n", "BMP180", stop-start_waiting, start_waiting-start, scaler);        
+        printf("%s,%lld,%lld,%d\n", "BMP180", stop-start_waiting, start_waiting-start, scaler);        
     }
 }
 
@@ -84,8 +85,7 @@ void poll_sr04(){
         // 2. Send value to sha256 task
         xQueueSend(dist_queue, &dist, portMAX_DELAY);
         long long int stop = esp_timer_get_time();
-        printf("%s, waiting %lld µs, run %lld µs, scaler=%d\n", "SR04", start-start_waiting, stop-start, scaler);
-
+        printf("%s,%lld,%lld,%d\n", "SR04", start-start_waiting, stop-start, scaler);
     }
 }
 
@@ -111,7 +111,7 @@ void sha256_task(){
         // }
         // printf("]\n");
         // printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
-        printf("%s, waiting %lld µs, run %lld µs, scaler=%d\n", "SHA256", start-start_waiting, stop-start, scaler);
+        printf("%s,%lld,%lld,%d\n", "SHA256", start-start_waiting, stop-start, scaler);
     }
 }
 
@@ -205,6 +205,7 @@ int app_main(void) {
         return 1;
     }
 
+    scaler=1;
     ffi_leds(scaler_read());
 
     // docs.espressif.com/projects/esp-idf/en/v4.3/esp32/api-reference/system/freertos.html#task-api
