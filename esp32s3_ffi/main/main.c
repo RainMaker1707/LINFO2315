@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <math.h>
 
 
 #include "freertos/FreeRTOS.h"
@@ -43,31 +44,32 @@ uint8_t scaler_read(){
 }
 
 void heartbeat(){
+    printf("name,waitTime,runningTime,scalerValue\n");
     while(true) {
         xSemaphoreTake(s_heartbeat, portMAX_DELAY);
-        printf("------------------------------------\n");
         xSemaphoreGive(s_bmp180);
         // Unlock the blink task to visually indicate the sampling.
         xSemaphoreGive(s_blink);
         // Read the frequency scaling factor.
-        const TickType_t task_delay = DELAY / (scaler_read() * portTICK_PERIOD_MS);
+        const TickType_t task_delay = DELAY / (pow(2, scaler_read()-1) * portTICK_PERIOD_MS);
         // Wait for the period defined by the scaling factor
         vTaskDelay(task_delay);
-        temp=0;
-        dist=0;
     }
 }
 
 void poll_bmp180(){
     while(true) {
+        long long int start_waiting = esp_timer_get_time();
         xSemaphoreTake(s_bmp180, portMAX_DELAY);
-        printf("BMP180\n");
+        long long int start = esp_timer_get_time();
         // Sample the BMP180 sensor once through the related FFI function.
         temp = ffi_bmp180();
         // Send the temperature value to the sha256_task task.
         xQueueSend(temp_queue, &temp, portMAX_DELAY);
         // Unlock the poll_sr04 task.
         xSemaphoreGive(s_sr04);
+        long long int stop = esp_timer_get_time();
+        printf("%s,%lld,%lld,%d\n", "BMP180", start-start_waiting, stop-start, scaler_read());
         
     }
 }
@@ -75,12 +77,15 @@ void poll_bmp180(){
 void poll_sr04(){
     // This task polls the SR04 distance sensor once through the related FFI function, then sends the value to the sha256_task task
     while(true){
+        long long int start_waiting = esp_timer_get_time();
         xSemaphoreTake(s_sr04, portMAX_DELAY);
-        printf("SR04\n");
+        long long int start = esp_timer_get_time();
         // Sample the SR04
         dist = ffi_sr04();
         // Send value to sha256 task
         xQueueSend(dist_queue, &dist, portMAX_DELAY);
+        long long int stop = esp_timer_get_time();
+        printf("%s,%lld,%lld,%d\n", "SR04", start-start_waiting, stop-start, scaler_read());
     }
 }
 
@@ -89,20 +94,24 @@ void sha256_task(){
         // This task collects one temperature value and one distance value, then performs a XOR
         double temperature = 0;
         double distance = 0;
+        long long int start_waiting = esp_timer_get_time();
         if( xQueueReceive(temp_queue, &temperature, portMAX_DELAY) == pdTRUE && xQueueReceive(dist_queue, &distance, portMAX_DELAY) == pdTRUE){
+            long long int start = esp_timer_get_time();
             xSemaphoreGive(s_heartbeat);
-            printf("SHA256\n");
             double xor = (double) (*(unsigned long long *)&temperature ^ *(unsigned long long *)&distance);
             // operaton between both values and finally computes the SHA256 hash of the XORed value. The final
             Array sha = ffi_sha256(xor);
             // random value is printed on the UART, along with the temperature and distance values
-            printf("SHA: [");
-            for(int i = 0; i<32; i++) {
-                if (i<31) { printf("%d, ", sha._0[i]); }
-                else { printf("%d", sha._0[31]); }
-            }
-            printf("]\n");
-            printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
+            // printf("SHA: [");
+            // for(int i = 0; i<32; i++) {
+            //     if (i<31) { printf("%d, ", sha._0[i]); }
+            //     else { printf("%d", sha._0[31]); }
+            // }
+            // printf("]\n");
+            // printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
+            long long int stop = esp_timer_get_time();
+            printf("%s,%lld,%lld,%d\n","SHA256", start-start_waiting, stop-start, scaler_read());
+
         }
     }
 }
@@ -111,7 +120,6 @@ void blink(){
     while(true){
         // This task handles the embedded LED through the dedicated FFI function.
         xSemaphoreTake(s_blink, portMAX_DELAY);
-        printf("BLINK\n");
         ffi_blink();
     }
 }
@@ -219,7 +227,7 @@ int app_main(void) {
     // docs.espressif.com/projects/esp-idf/en/v4.3/esp32/api-reference/system/freertos.html#task-api
     xTaskCreatePinnedToCore(blink, "blink", STACK_SIZE, NULL, 1|portPRIVILEGE_BIT, NULL, 1);
     xTaskCreatePinnedToCore(sha256_task, "sha256", STACK_SIZE, NULL, 2|portPRIVILEGE_BIT, NULL, 1);
-    xTaskCreatePinnedToCore(poll_sr04, "poll_sr04", STACK_SIZE, NULL, 3|portPRIVILEGE_BIT, NULL, 0);
+    xTaskCreatePinnedToCore(poll_sr04, "poll_sr04", STACK_SIZE, NULL, 3|portPRIVILEGE_BIT, NULL, 1);
     xTaskCreatePinnedToCore(button, "button", STACK_SIZE, NULL, 4|portPRIVILEGE_BIT, NULL, 1);
     xTaskCreatePinnedToCore(poll_bmp180, "poll_bmp180", STACK_SIZE, NULL, 5|portPRIVILEGE_BIT, NULL, 0);
     xTaskCreatePinnedToCore(heartbeat, "heartbeat", STACK_SIZE, NULL, 6|portPRIVILEGE_BIT, NULL, 0);
