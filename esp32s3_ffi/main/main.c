@@ -12,6 +12,7 @@
 
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include "freertos/portmacro.h"
 #include "esp_timer.h"
 #include "driver/gpio.h"
 
@@ -19,11 +20,12 @@
 #define DELAY 1000
 #define COUNTER_MAX 10
 
-SemaphoreHandle_t s_sr04;
+TickType_t task_delay = DELAY / portTICK_PERIOD_MS;
+
+SemaphoreHandle_t s_polls;
 SemaphoreHandle_t s_blink;
 SemaphoreHandle_t s_button;
 SemaphoreHandle_t s_scaler;
-SemaphoreHandle_t s_bmp180;
 SemaphoreHandle_t s_heartbeat;
 
 QueueHandle_t temp_queue;
@@ -47,27 +49,27 @@ void heartbeat(){
     printf("name,waitTime,runningTime,scalerValue\n");
     while(true) {
         xSemaphoreTake(s_heartbeat, portMAX_DELAY);
-        xSemaphoreGive(s_bmp180);
+        xSemaphoreGive(s_polls);
+        xSemaphoreGive(s_polls);
         // Unlock the blink task to visually indicate the sampling.
         xSemaphoreGive(s_blink);
         // Read the frequency scaling factor.
-        const TickType_t task_delay = DELAY / (pow(2, scaler_read()-1) * portTICK_PERIOD_MS);
+        task_delay = DELAY / (pow(2, scaler_read()-1) * portTICK_PERIOD_MS);
         // Wait for the period defined by the scaling factor
-        vTaskDelay(task_delay);
+        vTaskDelay((const TickType_t)task_delay);
     }
 }
 
 void poll_bmp180(){
     while(true) {
         // long long int start_waiting = esp_timer_get_time();
-        xSemaphoreTake(s_bmp180, portMAX_DELAY);
+        xSemaphoreTake(s_polls, task_delay);
+        //printf("\n");
         // long long int start = esp_timer_get_time();
         // Sample the BMP180 sensor once through the related FFI function.
         temp = ffi_bmp180();
         // Send the temperature value to the sha256_task task.
         xQueueSend(temp_queue, &temp, portMAX_DELAY);
-        // Unlock the poll_sr04 task.
-        xSemaphoreGive(s_sr04);
         // long long int stop = esp_timer_get_time();
         // printf("%s,%lld,%lld,%d\n", "BMP180", start-start_waiting, stop-start, scaler_read());
         
@@ -78,7 +80,8 @@ void poll_sr04(){
     // This task polls the SR04 distance sensor once through the related FFI function, then sends the value to the sha256_task task
     while(true){
         // long long int start_waiting = esp_timer_get_time();
-        xSemaphoreTake(s_sr04, portMAX_DELAY);
+        xSemaphoreTake(s_polls, task_delay);
+        //printf("\n");
         // long long int start = esp_timer_get_time();
         // Sample the SR04
         dist = ffi_sr04();
@@ -94,6 +97,7 @@ void sha256_task(){
         // This task collects one temperature value and one distance value, then performs a XOR
         double temperature = 0;
         double distance = 0;
+        // printf("SHA\n");
         // long long int start_waiting = esp_timer_get_time();
         if( xQueueReceive(temp_queue, &temperature, portMAX_DELAY) == pdTRUE && xQueueReceive(dist_queue, &distance, portMAX_DELAY) == pdTRUE){
             // long long int start = esp_timer_get_time();
@@ -171,8 +175,8 @@ int app_main(void) {
     }
     xSemaphoreGive(s_scaler);
 
-    s_bmp180 = xSemaphoreCreateBinary();
-    if (s_bmp180 == NULL)
+    s_polls = xSemaphoreCreateCounting(2, 0);
+    if (s_polls == NULL)
     {
         printf("ERROR: s_bmp180\n");
         return 1;
@@ -185,13 +189,6 @@ int app_main(void) {
         return 1;
     }
     xSemaphoreGive(s_heartbeat);
-
-    s_sr04 = xSemaphoreCreateBinary();
-    if (s_sr04 == NULL)
-    {
-        printf("ERROR: s_sr04\n");
-        return 1;
-    }
 
     s_blink = xSemaphoreCreateBinary();
     if (s_blink == NULL)
@@ -225,11 +222,11 @@ int app_main(void) {
     ffi_leds(scaler_read());
 
     // docs.espressif.com/projects/esp-idf/en/v4.3/esp32/api-reference/system/freertos.html#task-api
-    xTaskCreatePinnedToCore(blink, "blink", STACK_SIZE, NULL, 1|portPRIVILEGE_BIT, NULL, 1);
-    xTaskCreatePinnedToCore(sha256_task, "sha256", STACK_SIZE, NULL, 2|portPRIVILEGE_BIT, NULL, 1);
-    xTaskCreatePinnedToCore(poll_sr04, "poll_sr04", STACK_SIZE, NULL, 3|portPRIVILEGE_BIT, NULL, 0);
-    xTaskCreatePinnedToCore(button, "button", STACK_SIZE, NULL, 4|portPRIVILEGE_BIT, NULL, 1);
-    xTaskCreatePinnedToCore(poll_bmp180, "poll_bmp180", STACK_SIZE, NULL, 5|portPRIVILEGE_BIT, NULL, 0);
+    xTaskCreatePinnedToCore(blink, "blink", STACK_SIZE, NULL, 10|portPRIVILEGE_BIT, NULL, 1);
+    xTaskCreatePinnedToCore(sha256_task, "sha256", STACK_SIZE, NULL, 9|portPRIVILEGE_BIT, NULL, 1);
+    xTaskCreatePinnedToCore(poll_sr04, "poll_sr04", STACK_SIZE, NULL, 8|portPRIVILEGE_BIT, NULL, 0);
+    xTaskCreatePinnedToCore(button, "button", STACK_SIZE, NULL, 11|portPRIVILEGE_BIT, NULL, 1);
+    xTaskCreatePinnedToCore(poll_bmp180, "poll_bmp180", STACK_SIZE, NULL, 8|portPRIVILEGE_BIT, NULL, 0);
     xTaskCreatePinnedToCore(heartbeat, "heartbeat", STACK_SIZE, NULL, 6|portPRIVILEGE_BIT, NULL, 0);
 
     return 0;
