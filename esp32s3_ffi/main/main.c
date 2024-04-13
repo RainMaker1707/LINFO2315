@@ -23,7 +23,6 @@ SemaphoreHandle_t s_sr04;
 SemaphoreHandle_t s_blink;
 SemaphoreHandle_t s_button;
 SemaphoreHandle_t s_scaler;
-SemaphoreHandle_t s_bmp180;
 
 QueueHandle_t temp_queue;
 QueueHandle_t dist_queue;
@@ -42,17 +41,8 @@ uint8_t scaler_read(){
     return scaler_copy;
 }
 
-void heartbeat(){
-    while(true) {
-        //xSmepahoreGive(s_bmp180);
-        xSemaphoreGive(s_sr04);
-        xSemaphoreGive(s_blink);
-        xSemaphoreGive(s_blink);
-    }
-}
-
 void poll_bmp180(){
-    // printf("name,waitingTime,runningTime,scalerValue");
+    //printf("name,waitingTime,runningTime,scalerValue\n");
     while(true) {
         long long int start = esp_timer_get_time();
 
@@ -71,7 +61,7 @@ void poll_bmp180(){
         vTaskDelay(task_delay);
 
         long long int stop = esp_timer_get_time();        
-        // printf("%s,%lld,%lld,%d\n", "BMP180", stop-start_waiting, start_waiting-start, scaler);        
+        //printf("%s,%lld,%lld,%d\n", "BMP180", stop-start_waiting, start_waiting-start, scaler);        
     }
 }
 
@@ -86,35 +76,34 @@ void poll_sr04(){
         // 2. Send value to sha256 task
         xQueueSend(dist_queue, &dist, portMAX_DELAY);
         long long int stop = esp_timer_get_time();
-        // printf("%s,%lld,%lld,%d\n", "SR04", start-start_waiting, stop-start, scaler);
+        //printf("%s,%lld,%lld,%d\n", "SR04", start-start_waiting, stop-start, scaler);
     }
 }
 
 void sha256_task(){
     while(true){
         long long int start_waiting = esp_timer_get_time();
+        // add semaphore count here ?
         // This task collects one temperature value and one distance value, then performs a XOR
         double temperature = 0;
         double distance = 0;
-        xQueueReceive(temp_queue, &temperature, portMAX_DELAY);
-        xQueueReceive(dist_queue, &distance, portMAX_DELAY);
-        long long int start = esp_timer_get_time();
+        if(xQueueReceive(temp_queue, &temperature, portMAX_DELAY) == pdTRUE && xQueueReceive(dist_queue, &distance, portMAX_DELAY) == pdTRUE){
+            long long int start = esp_timer_get_time();
 
-        double xor = (double) (*(unsigned long long *)&temperature ^ *(unsigned long long *)&distance);
-        // operaton between both values and finally computes the SHA256 hash of the XORed value. The final
-        Array sha = ffi_sha256(xor);
-        long long int stop = esp_timer_get_time();
-        // random value is printed on the UART, along with the temperature and distance values
-        printf("SHA: [");
-        for(int i = 0; i<32; i++) {
-            if (i<31) { printf("%d, ", sha._0[i]); }
-            else { printf("%d", sha._0[31]); }
+            double xor = (double) (*(unsigned long long *)&temperature ^ *(unsigned long long *)&distance);
+            // operaton between both values and finally computes the SHA256 hash of the XORed value. The final
+            Array sha = ffi_sha256(xor);
+            long long int stop = esp_timer_get_time();
+            // random value is printed on the UART, along with the temperature and distance values
+            printf("SHA: [");
+            for(int i = 0; i<32; i++) {
+                if (i<31) { printf("%d, ", sha._0[i]); }
+                else { printf("%d", sha._0[31]); }
+            }
+            printf("]\n");
+            printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
+            //printf("%s,%lld,%lld,%d\n", "SHA256", start-start_waiting, stop-start, scaler);
         }
-        printf("]\n");
-        printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
-        temp = 0;
-        dist = 0;
-        // printf("%s,%lld,%lld,%d\n", "SHA256", start-start_waiting, stop-start, scaler);
     }
 }
 
@@ -168,7 +157,7 @@ int app_main(void) {
     s_scaler = xSemaphoreCreateBinary();
     if (s_scaler == NULL)
     {
-        // printf("ERROR: s_scaler\n");
+        printf("ERROR: s_scaler\n");
         return 1;
     }
     xSemaphoreGive(s_scaler);
@@ -176,35 +165,35 @@ int app_main(void) {
     s_sr04 = xSemaphoreCreateBinary();
     if (s_sr04 == NULL)
     {
-        // printf("ERROR: s_sr04\n");
+        printf("ERROR: s_sr04\n");
         return 1;
     }
 
     s_blink = xSemaphoreCreateBinary();
     if (s_blink == NULL)
     {
-        // printf("ERROR: s_blink\n");
+        printf("ERROR: s_blink\n");
         return 1;
     }
 
     s_button = xSemaphoreCreateBinary();
     if (s_button == NULL)
     {
-        // printf("ERROR: s_button\n");
+        printf("ERROR: s_button\n");
         return 1;
     }
 
     temp_queue = xQueueCreate(1, sizeof(double));
     if (temp_queue == NULL)
     {
-        // printf("ERROR: temp_queue\n");
+        printf("ERROR: temp_queue\n");
         return 1;
     }
 
     dist_queue = xQueueCreate(1, sizeof(double));
     if (dist_queue == NULL)
     {
-        // printf("ERROR: dist_queue\n");
+        printf("ERROR: dist_queue\n");
         return 1;
     }
 
@@ -217,7 +206,6 @@ int app_main(void) {
     xTaskCreatePinnedToCore(poll_sr04, "poll_sr04", STACK_SIZE, NULL, 3|portPRIVILEGE_BIT, NULL, 0);
     xTaskCreatePinnedToCore(button, "button", STACK_SIZE, NULL, 4|portPRIVILEGE_BIT, NULL, 1);
     xTaskCreatePinnedToCore(poll_bmp180, "poll_bmp180", STACK_SIZE, NULL, 5|portPRIVILEGE_BIT, NULL, 0);
-    //xTaskCreatePinnedToCore(heartbeat, "heartbeat", STACK_SIZE, NULL, 6|portPRIVILEGE_BIT, NULL, 0);
 
     return 0;
 }
