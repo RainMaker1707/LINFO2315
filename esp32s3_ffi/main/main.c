@@ -102,13 +102,13 @@ void sha256_task(){
             // operaton between both values and finally computes the SHA256 hash of the XORed value. The final
             Array sha = ffi_sha256(xor);
             // random value is printed on the UART, along with the temperature and distance values
-            // printf("SHA: [");
-            // for(int i = 0; i<32; i++) {
-            //     if (i<31) { printf("%d, ", sha._0[i]); }
-            //     else { printf("%d", sha._0[31]); }
-            // }
-            // printf("]\n");
-            // printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
+            printf("SHA: [");
+            for(int i = 0; i<32; i++) {
+                if (i<31) { printf("%d, ", sha._0[i]); }
+                else { printf("%d", sha._0[31]); }
+            }
+            printf("]\n");
+            printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
             long long int stop = esp_timer_get_time();
             printf("%s,%lld,%lld,%d\n","SHA256", start-start_waiting, stop-start, scaler_read());
 
@@ -227,7 +227,7 @@ int app_main(void) {
     // docs.espressif.com/projects/esp-idf/en/v4.3/esp32/api-reference/system/freertos.html#task-api
     xTaskCreatePinnedToCore(blink, "blink", STACK_SIZE, NULL, 1|portPRIVILEGE_BIT, NULL, 1);
     xTaskCreatePinnedToCore(sha256_task, "sha256", STACK_SIZE, NULL, 2|portPRIVILEGE_BIT, NULL, 1);
-    xTaskCreatePinnedToCore(poll_sr04, "poll_sr04", STACK_SIZE, NULL, 3|portPRIVILEGE_BIT, NULL, 1);
+    xTaskCreatePinnedToCore(poll_sr04, "poll_sr04", STACK_SIZE, NULL, 3|portPRIVILEGE_BIT, NULL, 0);
     xTaskCreatePinnedToCore(button, "button", STACK_SIZE, NULL, 4|portPRIVILEGE_BIT, NULL, 1);
     xTaskCreatePinnedToCore(poll_bmp180, "poll_bmp180", STACK_SIZE, NULL, 5|portPRIVILEGE_BIT, NULL, 0);
     xTaskCreatePinnedToCore(heartbeat, "heartbeat", STACK_SIZE, NULL, 6|portPRIVILEGE_BIT, NULL, 0);
