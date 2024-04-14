@@ -43,10 +43,7 @@ uint8_t scaler_read(){
 }
 
 void poll_bmp180(){
-    printf("name,waitingTime,runningTime,rngTime\n");
     while(true) {
-        long long int start = esp_timer_get_time();
-        start_rng = start;
         // 1. Sample the BMP180 sensor once through the related FFI function.
         temp = ffi_bmp180();
         // 2. Unlock the blink task to visually indicate the sampling.
@@ -57,54 +54,39 @@ void poll_bmp180(){
         const TickType_t task_delay = DELAY / (pow(2, scaler_read()-1) * portTICK_PERIOD_MS);  
         // 5. Unlock the poll_sr04 task.
         xSemaphoreGive(s_sr04);
-        long long int start_waiting = esp_timer_get_time();
         // 6. Wait for the period defined by the scaling factor
         vTaskDelay(task_delay);
-
-        long long int stop = esp_timer_get_time();        
-        printf("%s,%lld,%lld,0\n", "BMP180", stop-start_waiting, start_waiting-start);        
     }
 }
 
 void poll_sr04(){
     // This task polls the SR04 distance sensor once through the related FFI function, then sends the value to the sha256_task task
     while(true){
-        long long int start_waiting = esp_timer_get_time();
         xSemaphoreTake(s_sr04, portMAX_DELAY);
-        long long int start = esp_timer_get_time();
         //1. Sample the SR04
         dist = ffi_sr04();
         // 2. Send value to sha256 task
         xQueueSend(dist_queue, &dist, portMAX_DELAY);
-        long long int stop = esp_timer_get_time();
-        printf("%s,%lld,%lld,0\n", "SR04", start-start_waiting, stop-start);
     }
 }
 
 void sha256_task(){
     while(true){
-        long long int start_waiting = esp_timer_get_time();
-        // add semaphore count here ?
         // This task collects one temperature value and one distance value, then performs a XOR
         double temperature = 0;
         double distance = 0;
         if(xQueueReceive(temp_queue, &temperature, portMAX_DELAY) == pdTRUE && xQueueReceive(dist_queue, &distance, portMAX_DELAY) == pdTRUE){
-            long long int start = esp_timer_get_time();
-
             double xor = (double) (*(unsigned long long *)&temperature ^ *(unsigned long long *)&distance);
             // operaton between both values and finally computes the SHA256 hash of the XORed value. The final
             Array sha = ffi_sha256(xor);
-            long long int stop = esp_timer_get_time();
             // random value is printed on the UART, along with the temperature and distance values
-            // printf("SHA: [");
-            // for(int i = 0; i<32; i++) {
-            //     if (i<31) { printf("%d, ", sha._0[i]); }
-            //     else { printf("%d", sha._0[31]); }
-            // }
-            // printf("]\n");
-            // printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
-            printf("%s,%lld,%lld,%lld\n", "SHA256", start-start_waiting, stop-start, stop-start_rng);
-            start_rng = 0;
+            printf("SHA: [");
+            for(int i = 0; i<32; i++) {
+                if (i<31) { printf("%d, ", sha._0[i]); }
+                else { printf("%d", sha._0[31]); }
+            }
+            printf("]\n");
+            printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
         }
     }
 }
