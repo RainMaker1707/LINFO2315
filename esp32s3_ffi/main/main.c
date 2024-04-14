@@ -66,9 +66,7 @@ void poll_bmp180(){
         long long int start_waiting = esp_timer_get_time();
         xSemaphoreTake(s_polls, task_delay);
         long long int start = esp_timer_get_time();
-        if(start_rng == 0){
-            start_rng = start;
-        }
+        start_rng = start;
         // Sample the BMP180 sensor once through the related FFI function.
         temp = ffi_bmp180();
         // Send the temperature value to the sha256_task task.
@@ -85,9 +83,6 @@ void poll_sr04(){
         long long int start_waiting = esp_timer_get_time();
         xSemaphoreTake(s_polls, task_delay);
         long long int start = esp_timer_get_time();
-        if(start_rng == 0){
-            start_rng = start;
-        }
         // Sample the SR04
         dist = ffi_sr04();
         // Send value to sha256 task
@@ -121,7 +116,6 @@ void sha256_task(){
             long long int stop = esp_timer_get_time();
             long long int temp = stop-start_rng;
             printf("%s,%lld,%lld,%lld\n","SHA256", start-start_waiting, stop-start, temp);
-            start_rng = 0;
 
         }
     }
@@ -231,7 +225,7 @@ int app_main(void) {
     // docs.espressif.com/projects/esp-idf/en/v4.3/esp32/api-reference/system/freertos.html#task-api
     xTaskCreatePinnedToCore(blink, "blink", STACK_SIZE, NULL, 20|portPRIVILEGE_BIT, NULL, 1);
     xTaskCreatePinnedToCore(sha256_task, "sha256", STACK_SIZE, NULL, 5|portPRIVILEGE_BIT, NULL, 1);
-    xTaskCreatePinnedToCore(poll_sr04, "poll_sr04", STACK_SIZE, NULL, 10|portPRIVILEGE_BIT, NULL, 0);
+    xTaskCreatePinnedToCore(poll_sr04, "poll_sr04", STACK_SIZE, NULL, 10|portPRIVILEGE_BIT, NULL, 1);
     xTaskCreatePinnedToCore(button, "button", STACK_SIZE, NULL, 100|portPRIVILEGE_BIT, NULL, 1);
     xTaskCreatePinnedToCore(poll_bmp180, "poll_bmp180", STACK_SIZE, NULL, 10|portPRIVILEGE_BIT, NULL, 0);
     xTaskCreatePinnedToCore(heartbeat, "heartbeat", STACK_SIZE, NULL, 1|portPRIVILEGE_BIT, NULL, 0);
