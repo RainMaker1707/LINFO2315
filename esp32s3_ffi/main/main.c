@@ -219,7 +219,6 @@ int app_main(void) {
         return 1;
     }
 
-    scaler=7;
     ffi_leds(scaler_read());
 
     // docs.espressif.com/projects/esp-idf/en/v4.3/esp32/api-reference/system/freertos.html#task-api
