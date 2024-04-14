@@ -31,6 +31,7 @@ uint8_t scaler = 1;
 double temp = 0;
 double dist = 0;
 
+long long int start_rng = 0;
 
 
 uint8_t scaler_read(){
@@ -42,10 +43,10 @@ uint8_t scaler_read(){
 }
 
 void poll_bmp180(){
-    //printf("name,waitingTime,runningTime,scalerValue\n");
+    printf("name,waitingTime,runningTime,rngTime\n");
     while(true) {
         long long int start = esp_timer_get_time();
-
+        start_rng = start;
         // 1. Sample the BMP180 sensor once through the related FFI function.
         temp = ffi_bmp180();
         // 2. Unlock the blink task to visually indicate the sampling.
@@ -61,7 +62,7 @@ void poll_bmp180(){
         vTaskDelay(task_delay);
 
         long long int stop = esp_timer_get_time();        
-        //printf("%s,%lld,%lld,%d\n", "BMP180", stop-start_waiting, start_waiting-start, scaler);        
+        printf("%s,%lld,%lld,0\n", "BMP180", stop-start_waiting, start_waiting-start);        
     }
 }
 
@@ -76,7 +77,7 @@ void poll_sr04(){
         // 2. Send value to sha256 task
         xQueueSend(dist_queue, &dist, portMAX_DELAY);
         long long int stop = esp_timer_get_time();
-        //printf("%s,%lld,%lld,%d\n", "SR04", start-start_waiting, stop-start, scaler);
+        printf("%s,%lld,%lld,0\n", "SR04", start-start_waiting, stop-start);
     }
 }
 
@@ -95,14 +96,15 @@ void sha256_task(){
             Array sha = ffi_sha256(xor);
             long long int stop = esp_timer_get_time();
             // random value is printed on the UART, along with the temperature and distance values
-            printf("SHA: [");
-            for(int i = 0; i<32; i++) {
-                if (i<31) { printf("%d, ", sha._0[i]); }
-                else { printf("%d", sha._0[31]); }
-            }
-            printf("]\n");
-            printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
-            //printf("%s,%lld,%lld,%d\n", "SHA256", start-start_waiting, stop-start, scaler);
+            // printf("SHA: [");
+            // for(int i = 0; i<32; i++) {
+            //     if (i<31) { printf("%d, ", sha._0[i]); }
+            //     else { printf("%d", sha._0[31]); }
+            // }
+            // printf("]\n");
+            // printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
+            printf("%s,%lld,%lld,%lld\n", "SHA256", start-start_waiting, stop-start, stop-start_rng);
+            start_rng = 0;
         }
     }
 }
@@ -197,15 +199,14 @@ int app_main(void) {
         return 1;
     }
 
-    scaler=1;
     ffi_leds(scaler_read());
 
     // docs.espressif.com/projects/esp-idf/en/v4.3/esp32/api-reference/system/freertos.html#task-api
-    xTaskCreatePinnedToCore(blink, "blink", STACK_SIZE, NULL, 10|portPRIVILEGE_BIT, NULL, 1);
-    xTaskCreatePinnedToCore(sha256_task, "sha256", STACK_SIZE, NULL, 9|portPRIVILEGE_BIT, NULL, 1);
-    xTaskCreatePinnedToCore(poll_sr04, "poll_sr04", STACK_SIZE, NULL, 8|portPRIVILEGE_BIT, NULL, 0);
-    xTaskCreatePinnedToCore(button, "button", STACK_SIZE, NULL, 7|portPRIVILEGE_BIT, NULL, 1);
-    xTaskCreatePinnedToCore(poll_bmp180, "poll_bmp180", STACK_SIZE, NULL, 6|portPRIVILEGE_BIT, NULL, 0);
+    xTaskCreatePinnedToCore(blink, "blink", STACK_SIZE, NULL, 20|portPRIVILEGE_BIT, NULL, 1);
+    xTaskCreatePinnedToCore(sha256_task, "sha256", STACK_SIZE, NULL, 5|portPRIVILEGE_BIT, NULL, 1);
+    xTaskCreatePinnedToCore(poll_sr04, "poll_sr04", STACK_SIZE, NULL, 10|portPRIVILEGE_BIT, NULL, 0);
+    xTaskCreatePinnedToCore(button, "button", STACK_SIZE, NULL, 100|portPRIVILEGE_BIT, NULL, 1);
+    xTaskCreatePinnedToCore(poll_bmp180, "poll_bmp180", STACK_SIZE, NULL, 10|portPRIVILEGE_BIT, NULL, 0);
 
     return 0;
 }
