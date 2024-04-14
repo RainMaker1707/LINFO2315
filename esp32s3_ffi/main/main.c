@@ -35,8 +35,6 @@ uint8_t scaler = 1;
 double temp = 0;
 double dist = 0;
 
-long long int start_rng = 0;
-
 
 uint8_t scaler_read(){
     uint8_t scaler_copy = 0;
@@ -47,9 +45,9 @@ uint8_t scaler_read(){
 }
 
 void heartbeat(){
-    printf("name,waitTime,runningTime,rngTime\n");
     while(true) {
         xSemaphoreTake(s_heartbeat, portMAX_DELAY);
+        // Unlock the poll tasks at same time as they have the same priority
         xSemaphoreGive(s_polls);
         xSemaphoreGive(s_polls);
         // Unlock the blink task to visually indicate the sampling.
@@ -63,32 +61,22 @@ void heartbeat(){
 
 void poll_bmp180(){
     while(true) {
-        long long int start_waiting = esp_timer_get_time();
         xSemaphoreTake(s_polls, task_delay);
-        long long int start = esp_timer_get_time();
-        start_rng = start;
         // Sample the BMP180 sensor once through the related FFI function.
         temp = ffi_bmp180();
         // Send the temperature value to the sha256_task task.
         xQueueSend(temp_queue, &temp, portMAX_DELAY);
-        long long int stop = esp_timer_get_time();
-        printf("%s,%lld,%lld,0\n", "BMP180", start-start_waiting, stop-start);
-        
     }
 }
 
 void poll_sr04(){
     // This task polls the SR04 distance sensor once through the related FFI function, then sends the value to the sha256_task task
     while(true){
-        long long int start_waiting = esp_timer_get_time();
         xSemaphoreTake(s_polls, task_delay);
-        long long int start = esp_timer_get_time();
         // Sample the SR04
         dist = ffi_sr04();
         // Send value to sha256 task
         xQueueSend(dist_queue, &dist, portMAX_DELAY);
-        long long int stop = esp_timer_get_time();
-        printf("%s,%lld,%lld,0\n", "SR04", start-start_waiting, stop-start);
     }
 }
 
@@ -98,24 +86,19 @@ void sha256_task(){
         double temperature = 0;
         double distance = 0;
         // printf("SHA\n");
-        long long int start_waiting = esp_timer_get_time();
         if( xQueueReceive(temp_queue, &temperature, portMAX_DELAY) == pdTRUE && xQueueReceive(dist_queue, &distance, portMAX_DELAY) == pdTRUE){
-            long long int start = esp_timer_get_time();
             xSemaphoreGive(s_heartbeat);
             double xor = (double) (*(unsigned long long *)&temperature ^ *(unsigned long long *)&distance);
             // operaton between both values and finally computes the SHA256 hash of the XORed value. The final
             Array sha = ffi_sha256(xor);
             // random value is printed on the UART, along with the temperature and distance values
-            // printf("SHA: [");
-            // for(int i = 0; i<32; i++) {
-            //     if (i<31) { printf("%d, ", sha._0[i]); }
-            //     else { printf("%d", sha._0[31]); }
-            // }
-            // printf("]\n");
-            // printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
-            long long int stop = esp_timer_get_time();
-            long long int temp = stop-start_rng;
-            printf("%s,%lld,%lld,%lld\n","SHA256", start-start_waiting, stop-start, temp);
+            printf("SHA: [");
+            for(int i = 0; i<32; i++) {
+                if (i<31) { printf("%d, ", sha._0[i]); }
+                else { printf("%d", sha._0[31]); }
+            }
+            printf("]\n");
+            printf("Temperature: %.1f°C\tDistance: %.2fm\n\n", temp, dist);
 
         }
     }
